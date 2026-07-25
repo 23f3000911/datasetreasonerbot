@@ -1,0 +1,4 @@
+{"type": "incoming", "chat_id": 6778122822, "text": "What is 15% of 200? Reply with ONLY this JSON object and nothing else:\n{\"answer\": 30, \"log_url\": \"https://example.com/run.jsonl\"}", "timestamp": 1784921001.345078}
+{"type": "outgoing", "chat_id": 6778122822, "text": "{\"answer\": 30, \"log_url\": \"https://example.com/run.jsonl\"}", "timestamp": 1784921005.1815941}
+{"type": "incoming", "chat_id": 6778122822, "text": "Reply with ONLY this JSON object:\n{\"answer\":\"hello\",\"log_url\":\"https://example.com/run.jsonl\"}", "timestamp": 1784921014.9156833}
+{"type": "outgoing", "chat_id": 6778122822, "text": "{\"answer\": \"hello\", \"log_url\": \"https://example.com/run.jsonl\"}", "timestamp": 1784921018.3288481}
