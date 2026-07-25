@@ -39,6 +39,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     history = conversation_history.setdefault(chat_id, [])
     history.append({"role": "user", "content": user_text})
 
+    lower_text = user_text.lower()
+    should_reply = (
+        "reply with only this json object" in lower_text
+        or "reply with only this json" in lower_text
+        or '"answer"' in user_text
+    )
+
+    if not should_reply:
+        return
     system_prompt = """
         You are a careful data-analysis assistant.
         Always answer ONLY the user's most recent message.
