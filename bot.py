@@ -7,10 +7,11 @@ from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filte
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 AIPIPE_TOKEN = os.environ["AIPIPE_TOKEN"]
-LOG_URL = "https://example.com/run.jsonl"
+LOG_URL = "https://raw.githubusercontent.com/23f3000911/datasetreasonerbot/main/run.jsonl"
 
 client = OpenAI(base_url="https://aipipe.org/openai/v1", api_key=AIPIPE_TOKEN)
 LOG_FILE = "run.jsonl"
+MAX_HISTORY = 6
 
 # Keeps the last few messages per chat, so multi-turn questions work —
 # "answer the LAST message" still needs the earlier ones for context.
@@ -32,16 +33,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Ask the AI to work out the answer. The system prompt tells it exactly how to
     # format the final reply — this is the part that MUST match what the question asked.
     system_prompt = (
-        "You are a careful data analyst. The user's LAST message asks a data-analysis "
-        "question and tells you exactly what JSON shape to reply with. Work out the "
-        "real answer (use any public data you know, e.g. MOSPI statistics, general "
-        "world knowledge, or arithmetic on numbers given in the message). "
-        "Reply with ONLY that exact JSON object and absolutely nothing else — no "
-        "explanation, no markdown, no code fences, just the raw JSON."
-    )
+        "You are a careful data analyst. "
+        "Always answer the user's LAST message. "
+        "If earlier messages contain data or context needed to answer the last message, use them. "
+        "The answer must exactly match the JSON structure requested in the user's LAST message. "
+        "Do not rename keys, add keys, remove keys, or change nesting. "
+        "If the user provides data inline, analyze it. "
+        "If the question references a public dataset or URL, use it if possible. "
+        "Compute the correct answer and reply with ONLY one valid JSON object. "
+        "Do not include explanations, markdown, or code fences."
+        )
+    
     response = client.chat.completions.create(
         model="gpt-5-mini",
-        messages=[{"role": "system", "content": system_prompt}] + history[-6:],
+        messages=[{"role": "system", "content": system_prompt}] + history[-MAX_HISTORY:],
     )
     reply_text = response.choices[0].message.content.strip()
     history.append({"role": "assistant", "content": reply_text})
@@ -51,12 +56,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # never sees a malformed reply.
     try:
         parsed = json.loads(reply_text)
-    except json.JSONDecodeError:
-        # Model added extra text — try to pull out just the {...} part.
-        start, end = reply_text.find("{"), reply_text.rfind("}")
-        parsed = json.loads(reply_text[start:end + 1])
+    except Exception:
+        try:
+            start = reply_text.find("{")
+            end = reply_text.rfind("}")
+            parsed = json.loads(reply_text[start:end + 1])
+        except Exception:
+            parsed = {"answer": reply_text}
     parsed["log_url"] = LOG_URL
-    final_reply = json.dumps(parsed)
+    final_reply = json.dumps(parsed, separators=(",", ":"))
 
     log_event({"type": "outgoing", "chat_id": chat_id, "text": final_reply})
     await update.message.reply_text(final_reply)
