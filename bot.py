@@ -13,13 +13,17 @@ LOG_FILE = "run.jsonl"
 MAX_HISTORY = 20
 
 flask_app = Flask(__name__)
+
+@flask_app.get("/")
+def home():
+    return "Bot is running", 200
+
 @flask_app.get("/run.jsonl")
 def serve_log():
     if not os.path.exists(LOG_FILE):
         open(LOG_FILE, "a").close()
     return send_file(LOG_FILE, mimetype="application/json")
 
-# Keeps the last few messages per chat, so multi-turn questions work — "answer the LAST message" still needs the earlier ones for context.
 conversation_history = {}
 
 def log_event(event: dict):
@@ -35,7 +39,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     history = conversation_history.setdefault(chat_id, [])
     history.append({"role": "user", "content": user_text})
 
-    # Ask the AI to work out the answer. The system prompt tells it exactly how to format the final reply — this is the part that MUST match what the question asked.
     system_prompt = """
         You are a careful data-analysis assistant.
         Always answer ONLY the user's most recent message.
@@ -53,7 +56,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         If the data is included inline, compute the answer from that data.
         Return only the JSON object.
         """
-    
+
     response = client.chat.completions.create(
         model="gpt-5-mini",
         messages=[{"role": "system", "content": system_prompt}] + history[-MAX_HISTORY:],
@@ -61,13 +64,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_text = response.choices[0].message.content.strip()
     history.append({"role": "assistant", "content": reply_text})
 
-    # Make sure we actually reply with valid JSON containing "log_url" — if the model forgot the log_url field or wrapped it in markdown, fix it up here so the grader never sees a malformed reply.
     try:
         parsed = json.loads(reply_text)
     except json.JSONDecodeError:
         start = reply_text.find("{")
         end = reply_text.rfind("}")
-
         if start != -1 and end != -1 and end > start:
             try:
                 parsed = json.loads(reply_text[start:end + 1])
@@ -75,20 +76,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parsed = {"answer": reply_text.strip()}
         else:
             parsed = {"answer": reply_text.strip()}
+
     parsed["log_url"] = LOG_URL
     final_reply = json.dumps(parsed, separators=(",", ":"))
 
     log_event({"type": "outgoing", "chat_id": chat_id, "text": final_reply})
     await update.message.reply_text(final_reply)
 
-
 def start_log_server():
     port = int(os.environ.get("PORT", 8080))
     flask_app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
 app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-# Start the Flask server that serves run.jsonl
 threading.Thread(target=start_log_server, daemon=True).start()
 
 print("Bot is running on Railway...")
